@@ -32,7 +32,7 @@ static bool isFirstScan = true;
 const char* const* firstScanFilterTypes = GetScanFilterTypeNameListInFirstScan();
 const char* const* nextScanFilterTypes = GetScanFilterTypeNameListInNextScan();
 
-static int selectedType = 0;
+static int selectedScanMemType = 0;
 static int selectedScanFilter = 0;
 
 static int32_t valueToFindInt = 0;
@@ -126,7 +126,7 @@ void DrawProcessSelectorSection() {
 
 void DrawMemScannerSection() {
     ImGui::Text("--- Scanner ---");
-    ImGui::Combo("Tipo", &selectedType, memTypes, MEM_COUNT);
+    ImGui::Combo("Tipo", &selectedScanMemType, memTypes, MEM_COUNT);
 
     if (isFirstScan) {
         ImGui::Combo("Filtro", &selectedScanFilter, firstScanFilterTypes, allowedInFirstScanCount);
@@ -136,7 +136,7 @@ void DrawMemScannerSection() {
 
     ImGui::Checkbox("Only Writable Memory", &onlyWritable);
 
-    MemoryType selectedMemType = ToMemoryType(selectedType);
+    MemoryType selectedMemType = ToMemoryType(selectedScanMemType);
     void* currentValPtr = nullptr;
     size_t currentSize = 0;
 
