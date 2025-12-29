@@ -29,11 +29,11 @@ static bool onlyWritable = true;
 const char* const* memTypes = GetMemoryTypeNameList();
 static bool isFirstScan = true;
 
-const char* const* firstScanFilterTypes = GetScanTypeNameListInFirstScan();
-const char* const* nextScanFilterTypes = GetScanTypeNameListInNextScan();
+const char* const* firstScanFilterTypes = GetScanFilterTypeNameListInFirstScan();
+const char* const* nextScanFilterTypes = GetScanFilterTypeNameListInNextScan();
 
 static int selectedType = 0;
-static int selectedFilter = 0;
+static int selectedScanFilter = 0;
 
 static int32_t valueToFindInt = 0;
 static float valueToFindFloat = 0.0f;
@@ -129,9 +129,9 @@ void DrawMemScannerSection() {
     ImGui::Combo("Tipo", &selectedType, memTypes, MEM_COUNT);
 
     if (isFirstScan) {
-        ImGui::Combo("Filtro", &selectedFilter, firstScanFilterTypes, allowedInFirstScanCount);
+        ImGui::Combo("Filtro", &selectedScanFilter, firstScanFilterTypes, allowedInFirstScanCount);
     } else {
-        ImGui::Combo("Filtro", &selectedFilter, firstScanFilterTypes, SCAN_COUNT);
+        ImGui::Combo("Filtro", &selectedScanFilter, nextScanFilterTypes, SCAN_FILTER_COUNT);
     }
 
     ImGui::Checkbox("Only Writable Memory", &onlyWritable);
@@ -168,7 +168,7 @@ void DrawMemScannerSection() {
 
     if (isFirstScan) {
         if (ImGui::Button("First Scan", ImVec2(ImGui::GetContentRegionAvail().x * 0.5f, 0))) {
-            scanner.FirstScan(currentValPtr, currentSize, onlyWritable);
+            scanner.FirstScan(currentValPtr, currentSize, onlyWritable, ToScanFilterType(selectedScanFilter));
             isFirstScan = false;
         }
     } else {
@@ -178,7 +178,7 @@ void DrawMemScannerSection() {
         }
         ImGui::SameLine();
         if (ImGui::Button("Next Scan", ImVec2(-1, 0))) {
-            scanner.NextScan(currentValPtr, currentSize);
+            scanner.NextScan(currentValPtr, currentSize, ToScanFilterType(selectedScanFilter));
         }
     }
     

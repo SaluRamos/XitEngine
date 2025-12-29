@@ -25,14 +25,14 @@ static const char* const* GetMemoryTypeNameList() {
     return names;
 }
 
-MemoryType ToMemoryType(int value) {
+inline MemoryType ToMemoryType(int value) {
     if (value < 0 || value >= MEM_COUNT)
         return MEM_COUNT;
     return static_cast<MemoryType>(value);
 }
 
 //ID, STR NAME, ALLOWED_IN_FIRST_SCAN
-#define SCAN_TYPE_LIST \
+#define SCAN_FILTER_TYPE_LIST \
     X(EXACT_VALUE, "EXACT VALUE", true) \
     X(BIGGER_THAN, "BIGGER THAN", true) \
     X(SMALLER_THAN, "SMALLER THAN", true) \
@@ -42,35 +42,41 @@ MemoryType ToMemoryType(int value) {
     X(CHANGED, "CHANGED", false) \
     X(UNCHANGED, "UNCHANGED", false)
 
-enum ScanType {
+enum ScanFilterType {
     #define X(id, str, allowedInFirstScan) id,
-        SCAN_TYPE_LIST
+        SCAN_FILTER_TYPE_LIST
     #undef X
-        SCAN_COUNT
+        SCAN_FILTER_COUNT
 };
 
-static const char* const ScanTypeNames[] = {
+inline ScanFilterType ToScanFilterType(int value) {
+    if (value < 0 || value >= SCAN_FILTER_COUNT)
+        return SCAN_FILTER_COUNT;
+    return static_cast<ScanFilterType>(value);
+}
+
+static const char* const ScanFilterTypeNames[] = {
     #define X(id, str, allowed) str,
-        SCAN_TYPE_LIST
+        SCAN_FILTER_TYPE_LIST
     #undef X
 };
 
-static const bool ScanTypeAllowedOnFirstScan[] = {
+static const bool ScanFilterTypeAllowedOnFirstScan[] = {
 #define X(id, str, allowed) allowed,
-    SCAN_TYPE_LIST
+    SCAN_FILTER_TYPE_LIST
 #undef X
 };
 
 static int allowedInFirstScanCount = 0;
 
-static const char* const* GetScanTypeNameListInFirstScan() {
-    static const char* names[SCAN_COUNT];
+static const char* const* GetScanFilterTypeNameListInFirstScan() {
+    static const char* names[SCAN_FILTER_COUNT];
     static bool initialized = false;
 
     if (!initialized) {
-        for (int i = 0; i < SCAN_COUNT; i++) {
-            if (ScanTypeAllowedOnFirstScan[i]) {
-                names[allowedInFirstScanCount++] = ScanTypeNames[i];
+        for (int i = 0; i < SCAN_FILTER_COUNT; i++) {
+            if (ScanFilterTypeAllowedOnFirstScan[i]) {
+                names[allowedInFirstScanCount++] = ScanFilterTypeNames[i];
             }
         }
         initialized = true;
@@ -79,8 +85,8 @@ static const char* const* GetScanTypeNameListInFirstScan() {
     return names;
 }
 
-static const char* const* GetScanTypeNameListInNextScan() {
-    return ScanTypeNames;
+static const char* const* GetScanFilterTypeNameListInNextScan() {
+    return ScanFilterTypeNames;
 }
 
 #endif

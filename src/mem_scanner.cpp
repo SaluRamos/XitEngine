@@ -6,11 +6,10 @@ bool MemoryScanner::ConnectToProcess(const std::wstring& procName) {
         hProcess = NULL;
     }
     ResetScan();
-
+    ResetSpeedHack();
     PROCESSENTRY32W pe32;
     pe32.dwSize = sizeof(PROCESSENTRY32W);
     HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-
     if (Process32FirstW(hSnapshot, &pe32)) {
         do {
             if (procName == pe32.szExeFile) {
@@ -57,22 +56,21 @@ BOOL MemoryScanner::WriteByteMemory(LPVOID address, uint8_t value) {
 
 void MemoryScanner::ResetScan() {
     foundAddresses.clear();
+}
+
+void MemoryScanner::ResetSpeedHack() {
     speedMultiplierOffset = 0;
 }
 
-void MemoryScanner::FirstScan(void* value, size_t size, bool onlyWritable) {
-    // Limpa resultados anteriores antes de iniciar
-    foundAddresses.clear();
+void MemoryScanner::FirstScan(void* value, size_t size, bool onlyWritable, ScanFilterType scanType) {
+    ResetScan();
     if (!hProcess) return;
-
     MEMORY_BASIC_INFORMATION mbi;
     unsigned char* addr = nullptr;
-
     // Itera sobre as regiões de memória do processo
     while (VirtualQueryEx(hProcess, addr, &mbi, sizeof(mbi))) {
         // Filtro de Estado: Apenas memória commitada (em uso físico)
         if (mbi.State == MEM_COMMIT) {
-            
             // Lógica de proteção baseada na escolha do usuário
             bool isWritable = (mbi.Protect & PAGE_READWRITE) || (mbi.Protect & PAGE_EXECUTE_READWRITE);
             bool isReadable = (mbi.Protect & PAGE_READONLY) || (mbi.Protect & PAGE_READWRITE) || 
@@ -111,8 +109,6 @@ void MemoryScanner::FirstScan(void* value, size_t size, bool onlyWritable) {
                             foundAddresses.push_back((LPVOID)((uintptr_t)mbi.BaseAddress + i));
                         }
                     }
-
-
                 }
             }
         }
@@ -121,9 +117,8 @@ void MemoryScanner::FirstScan(void* value, size_t size, bool onlyWritable) {
     }
 }
 
-void MemoryScanner::NextScan(void* value, size_t size) {
+void MemoryScanner::NextScan(void* value, size_t size, ScanFilterType scanType) {
     if (!hProcess || foundAddresses.empty()) return;
-
     std::vector<LPVOID> newResults;
     for (LPVOID addr : foundAddresses) {
         std::vector<unsigned char> tempBuffer(size);
@@ -170,7 +165,6 @@ bool MemoryScanner::UpdateRemoteSpeed(DWORD processId, float newSpeed) {
         std::cout << "Erro: DLL nao encontrada no jogo!\n";
         return false;
     }
-
     if (speedMultiplierOffset == 0) {
         HMODULE hLocalDll = LoadLibraryA("speedhack.dll");
         if (hLocalDll) {
@@ -181,12 +175,9 @@ bool MemoryScanner::UpdateRemoteSpeed(DWORD processId, float newSpeed) {
             FreeLibrary(hLocalDll);
         }
     }
-
     if (speedMultiplierOffset == 0) return false;
-
     uintptr_t finalAddr = dllBase + speedMultiplierOffset;
     std::cout << "Escrevendo em: " << std::hex << finalAddr << "\n";
-
     if (hProcess) {
         return WriteProcessMemory(hProcess, (LPVOID)finalAddr, &newSpeed, sizeof(float), NULL);
     }
