@@ -4,7 +4,6 @@
 #include <windows.h>
 #include <vector>
 #include <string>
-// #include <shellapi.h>
 #include <tlhelp32.h>
 
 class Utils {
