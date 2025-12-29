@@ -12,3 +12,5 @@ ao modificar o CMakeLists.txt, exclua a pasta "out".
 Também precisamos usar um EPISILON quando for buscar por variaveis com casas decimais (float e double), pois oque esta sendo exibido na tela pode ser uma aproximação.
 
 - Também adicione essas opções de tipo de variavel: 1 byte, 2 bytes, 4 bytes, 8 bytes, All
+
+- speed hack funcional

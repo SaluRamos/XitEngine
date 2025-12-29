@@ -5,8 +5,7 @@ bool MemoryScanner::ConnectToProcess(const std::wstring& procName) {
         CloseHandle(hProcess);
         hProcess = NULL;
     }
-    foundAddresses.clear();
-    speedMultiplierOffset = 0;
+    ResetScan();
 
     PROCESSENTRY32W pe32;
     pe32.dwSize = sizeof(PROCESSENTRY32W);
@@ -26,9 +25,39 @@ bool MemoryScanner::ConnectToProcess(const std::wstring& procName) {
     return false;
 }
 
-bool MemoryScanner::WriteMemory(LPVOID address, int value) {
+BOOL MemoryScanner::WriteIntMemory(LPVOID address, int32_t value) {
     if (!hProcess) return false;
-    return WriteProcessMemory(hProcess, address, &value, sizeof(int), NULL);
+    SIZE_T written = 0;
+    return WriteProcessMemory(hProcess, address, &value, sizeof(value), &written) && written == sizeof(value);
+}
+
+BOOL MemoryScanner::WriteFloatMemory(LPVOID address, float value) {
+    if (!hProcess) return false;
+    SIZE_T written = 0;
+    return WriteProcessMemory(hProcess, address, &value, sizeof(value), &written) && written == sizeof(value);
+}
+
+BOOL MemoryScanner::WriteDoubleMemory(LPVOID address, double value) {
+    if (!hProcess) return false;
+    SIZE_T written = 0;
+    return WriteProcessMemory(hProcess, address, &value, sizeof(value), &written) && written == sizeof(value);
+}
+
+BOOL MemoryScanner::WriteLongMemory(LPVOID address, int64_t value) {
+    if (!hProcess) return false;
+    SIZE_T written = 0;
+    return WriteProcessMemory(hProcess, address, &value, sizeof(value), &written) && written == sizeof(value);
+}
+
+BOOL MemoryScanner::WriteByteMemory(LPVOID address, uint8_t value) {
+    if (!hProcess) return false;
+    SIZE_T written = 0;
+    return WriteProcessMemory(hProcess, address, &value, sizeof(value), &written) && written == sizeof(value);
+}
+
+void MemoryScanner::ResetScan() {
+    foundAddresses.clear();
+    speedMultiplierOffset = 0;
 }
 
 void MemoryScanner::FirstScan(void* value, size_t size, bool onlyWritable) {

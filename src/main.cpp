@@ -19,22 +19,37 @@
 static bool showProcessSelector = false;
 static std::vector<Utils::ProcessInfo> processList;
 static int selectedProcessIndex = -1;
-static MemoryScanner scanner;
 static char procName[128] = "RobloxPlayerBeta.exe";
-static bool onlyWritable = true;
-static int valueToFindInt = 0;
-static float valueToFindFloat = 0;
-static double valueToFindDouble = 0;
-static int selectedType = 0;
-const char* types[] = { "int", "float", "double", "long" };
+static char procFilter[128] = ""; // search filter
 static bool isConnectedToProcess = false;
 static bool errorWhileConnecting = false;
-static int writeValue = 0;
-static char procFilter[128] = ""; // search filter
+
+static MemoryScanner scanner;
+static bool onlyWritable = true;
+const char* const* memTypes = GetMemoryTypeNameList();
+static bool isFirstScan = true;
+
+const char* const* firstScanFilterTypes = GetScanTypeNameListInFirstScan();
+const char* const* nextScanFilterTypes = GetScanTypeNameListInNextScan();
+
+static int selectedType = 0;
+static int selectedFilter = 0;
+
+static int32_t valueToFindInt = 0;
+static float valueToFindFloat = 0.0f;
+static double valueToFindDouble = 0.0;
+static int64_t valueToFindLong = 0;
+static uint8_t valueToFindByte = 0;
+
+static int32_t valueToReplaceInt = 0;
+static float valueToReplaceFloat = 0;
+static double valueToReplaceDouble = 0;
+static int64_t valueToReplaceLong = 0;
+static uint8_t valueToReplaceByte = 0;
+
 static bool speedHackActivated = false;
 static float speedFactor = 5.0f;
-static bool dllInjected = false;
-
+static bool speedDLLInjected = false;
 
 void DrawProcessSelectorSection() {
     ImGui::Text("--- Process Selector ---");
@@ -111,37 +126,107 @@ void DrawProcessSelectorSection() {
 
 void DrawMemScannerSection() {
     ImGui::Text("--- Scanner ---");
-    ImGui::Combo("Tipo", &selectedType, types, IM_ARRAYSIZE(types));
-    ImGui::Checkbox("Somente Memoria Escrevivel (Writable)", &onlyWritable);
-    if (selectedType == 0) // int
-        ImGui::InputScalar("##val", ImGuiDataType_S32, &valueToFindInt);
-    else if (selectedType == 1) // float
-        ImGui::InputScalar("##val", ImGuiDataType_Float, &valueToFindFloat);
-    else if (selectedType == 2) // double
-        ImGui::InputScalar("##val", ImGuiDataType_Double, &valueToFindDouble);
+    ImGui::Combo("Tipo", &selectedType, memTypes, MEM_COUNT);
+
+    if (isFirstScan) {
+        ImGui::Combo("Filtro", &selectedFilter, firstScanFilterTypes, allowedInFirstScanCount);
+    } else {
+        ImGui::Combo("Filtro", &selectedFilter, firstScanFilterTypes, SCAN_COUNT);
+    }
+
+    ImGui::Checkbox("Only Writable Memory", &onlyWritable);
+
+    MemoryType selectedMemType = ToMemoryType(selectedType);
     void* currentValPtr = nullptr;
     size_t currentSize = 0;
-    if (selectedType == 0) { currentValPtr = &valueToFindInt; currentSize = sizeof(int); }
-    else if (selectedType == 1) { currentValPtr = &valueToFindFloat; currentSize = sizeof(float); }
-    else if (selectedType == 2) { currentValPtr = &valueToFindDouble; currentSize = sizeof(double); }
-    if (ImGui::Button("First Scan", ImVec2(ImGui::GetContentRegionAvail().x * 0.5f, 0))) {
-        scanner.FirstScan(currentValPtr, currentSize, onlyWritable);
+
+    if (selectedMemType == MEM_INT) {
+        ImGui::InputScalar("##val", ImGuiDataType_S32, &valueToFindInt);
+        currentValPtr = &valueToFindInt;
+        currentSize = sizeof(int32_t);
     }
-    ImGui::SameLine();
-    if (ImGui::Button("Next Scan", ImVec2(-1, 0))) {
-        scanner.NextScan(currentValPtr, currentSize);
+    else if (selectedMemType == MEM_FLOAT) {
+        ImGui::InputScalar("##val", ImGuiDataType_Float, &valueToFindFloat);
+        currentValPtr = &valueToFindFloat;
+        currentSize = sizeof(float);
     }
+    else if (selectedMemType == MEM_DOUBLE) {
+        ImGui::InputScalar("##val", ImGuiDataType_Double, &valueToFindDouble);
+        currentValPtr = &valueToFindDouble;
+        currentSize = sizeof(double);
+    }
+    else if (selectedMemType == MEM_LONG) {
+        ImGui::InputScalar("##val", ImGuiDataType_S64, &valueToFindLong);
+        currentValPtr = &valueToFindLong;
+        currentSize = sizeof(int64_t);
+    }
+    else if (selectedMemType == MEM_BYTE) {
+        ImGui::InputScalar("##val", ImGuiDataType_U8, &valueToFindByte);
+        currentValPtr = &valueToFindByte;
+        currentSize = sizeof(uint8_t);
+    }
+
+    if (isFirstScan) {
+        if (ImGui::Button("First Scan", ImVec2(ImGui::GetContentRegionAvail().x * 0.5f, 0))) {
+            scanner.FirstScan(currentValPtr, currentSize, onlyWritable);
+            isFirstScan = false;
+        }
+    } else {
+        if (ImGui::Button("Reset Scan", ImVec2(ImGui::GetContentRegionAvail().x * 0.5f, 0))) {
+            scanner.ResetScan();
+            isFirstScan = true;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Next Scan", ImVec2(-1, 0))) {
+            scanner.NextScan(currentValPtr, currentSize);
+        }
+    }
+    
     ImGui::TextColored(ImVec4(1, 1, 0, 1), "Encontrados: %zu", scanner.foundAddresses.size());
     // Write to mem
     if (!scanner.foundAddresses.empty()) {
-        ImGui::Separator();
-        ImGui::Text("--- Alterar Valor ---");
-        ImGui::InputInt("Novo Valor", &writeValue);
-        if (ImGui::Button("Escrever em TODOS", ImVec2(-1, 0))) {
-            for (LPVOID addr : scanner.foundAddresses) {
-                scanner.WriteMemory(addr, writeValue);
+        ImGui::Text("Novo Valor");
+        if (selectedMemType == MEM_INT) {
+            ImGui::InputScalar("##newValue", ImGuiDataType_S32, &valueToReplaceInt);
+            if (ImGui::Button("Escrever em TODOS", ImVec2(-1, 0))) {
+                for (LPVOID addr : scanner.foundAddresses) {
+                    scanner.WriteIntMemory(addr, valueToReplaceInt);
+                }
             }
         }
+        else if (selectedMemType == MEM_FLOAT) {
+            ImGui::InputScalar("##newValue", ImGuiDataType_Float, &valueToReplaceFloat);
+            if (ImGui::Button("Escrever em TODOS", ImVec2(-1, 0))) {
+                for (LPVOID addr : scanner.foundAddresses) {
+                    scanner.WriteFloatMemory(addr, valueToReplaceFloat);
+                }
+            }
+        }
+        else if (selectedMemType == MEM_DOUBLE) {
+            ImGui::InputScalar("##newValue", ImGuiDataType_Double, &valueToReplaceDouble);
+            if (ImGui::Button("Escrever em TODOS", ImVec2(-1, 0))) {
+                for (LPVOID addr : scanner.foundAddresses) {
+                    scanner.WriteDoubleMemory(addr, valueToReplaceDouble);
+                }
+            }
+        }
+        else if (selectedMemType == MEM_LONG) {
+            ImGui::InputScalar("##newValue", ImGuiDataType_S64, &valueToReplaceLong);
+            if (ImGui::Button("Escrever em TODOS", ImVec2(-1, 0))) {
+                for (LPVOID addr : scanner.foundAddresses) {
+                    scanner.WriteLongMemory(addr, valueToReplaceLong);
+                }
+            }
+        }
+        else if (selectedMemType == MEM_BYTE) {
+            ImGui::InputScalar("##newValue", ImGuiDataType_U8, &valueToReplaceByte);
+            if (ImGui::Button("Escrever em TODOS", ImVec2(-1, 0))) {
+                for (LPVOID addr : scanner.foundAddresses) {
+                    scanner.WriteByteMemory(addr, valueToReplaceByte);
+                }
+            }
+        }
+
     }
 }
 
@@ -151,7 +236,7 @@ void DrawSpeedHackSection() {
         speedHackActivated = true;
     }
     if (speedHackActivated) {
-        if (!dllInjected) {
+        if (!speedDLLInjected) {
             wchar_t currentPath[MAX_PATH];
             GetModuleFileNameW(NULL, currentPath, MAX_PATH);
             std::wstring fullPath(currentPath);
@@ -160,12 +245,12 @@ void DrawSpeedHackSection() {
             std::string finalPath(dllPath.begin(), dllPath.end());
             std::cout << "speed hack dll is: " << finalPath << "\n";
             if (Utils::InjectDLL(scanner.targetPID, finalPath.c_str())) {
-                dllInjected = true;
+                speedDLLInjected = true;
             }
         } else {
             if (ImGui::SliderFloat("Fator de Velocidade", &speedFactor, 0.1f, 10.0f, "%.1fx")) {
                 if (!scanner.UpdateRemoteSpeed(scanner.targetPID, speedFactor)) {
-                    dllInjected = false;
+                    speedDLLInjected = false;
                 }
             }
             if (ImGui::Button("Resetar")) {

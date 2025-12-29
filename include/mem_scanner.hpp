@@ -6,6 +6,7 @@
 #include <vector>
 #include <tlhelp32.h>
 #include <string>
+#include <cstdint>
 
 class MemoryScanner {
     public:
@@ -17,7 +18,13 @@ class MemoryScanner {
 
         bool ConnectToProcess(const std::wstring& procName);
 
-        bool WriteMemory(LPVOID address, int value);
+        BOOL WriteIntMemory(LPVOID address, int32_t value);
+        BOOL WriteFloatMemory(LPVOID address, float value);
+        BOOL WriteDoubleMemory(LPVOID address, double value);
+        BOOL WriteLongMemory(LPVOID address, int64_t value);
+        BOOL WriteByteMemory(LPVOID address, uint8_t value);
+
+        void ResetScan();
 
         void FirstScan(void* value, size_t size, bool onlyWritable);
 
