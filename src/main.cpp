@@ -80,6 +80,27 @@ enum MemoryType {
     MEM_EIGHT_BYTES
 };
 
+bool InjectDLL(DWORD processId, const char* dllPath) {
+    HANDLE hProc = OpenProcess(PROCESS_ALL_ACCESS, FALSE, processId);
+    if (!hProc) return false;
+
+    LPVOID pRemotePath = VirtualAllocEx(hProc, NULL, strlen(dllPath) + 1, MEM_COMMIT, PAGE_READWRITE);
+    WriteProcessMemory(hProc, pRemotePath, dllPath, strlen(dllPath) + 1, NULL);
+
+    HANDLE hThread = CreateRemoteThread(hProc, NULL, 0, 
+        (LPTHREAD_START_ROUTINE)GetProcAddress(GetModuleHandleA("kernel32.dll"), "LoadLibraryA"), 
+        pRemotePath, 0, NULL);
+
+    if (hThread) {
+        WaitForSingleObject(hThread, INFINITE);
+        CloseHandle(hThread);
+    }
+
+    VirtualFreeEx(hProc, pRemotePath, 0, MEM_RELEASE);
+    CloseHandle(hProc);
+    return true;
+}
+
 // Lógica de Memória (Simplificada para o exemplo)
 class MemoryScanner {
     public:
@@ -203,6 +224,47 @@ class MemoryScanner {
             return std::abs(val1 - val2) < epsilon;
         }
 
+        bool UpdateRemoteSpeed(DWORD processId, float newSpeed) {
+            // 1. Achar a base da DLL no processo alvo
+            MODULEENTRY32W me32;
+            me32.dwSize = sizeof(MODULEENTRY32W);
+            HANDLE hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, processId);
+            
+            uintptr_t dllBase = 0;
+            if (Module32FirstW(hSnap, &me32)) {
+                do {
+                    if (std::wstring(me32.szModule) == L"speedhack.dll") {
+                        dllBase = (uintptr_t)me32.modBaseAddr;
+                        break;
+                    }
+                } while (Module32NextW(hSnap, &me32));
+            }
+            CloseHandle(hSnap);
+
+            if (dllBase == 0) return false;
+
+            HMODULE hLocalDll = LoadLibraryA("speedhack.dll");
+            if (!hLocalDll) return false; // Evita crash se a DLL não for encontrada localmente
+
+            FARPROC remoteVarAddr = GetProcAddress(hLocalDll, "speedFactor");
+            if (!remoteVarAddr) {
+                FreeLibrary(hLocalDll);
+                return false; // Evita crash se a variável não for exportada
+            }
+
+            uintptr_t offset = (uintptr_t)remoteVarAddr - (uintptr_t)hLocalDll;
+            FreeLibrary(hLocalDll);
+
+            uintptr_t finalAddr = dllBase + offset;
+
+            // Verifique se hProcess é válido antes de escrever
+            if (hProcess) {
+                return WriteProcessMemory(hProcess, (LPVOID)finalAddr, &newSpeed, sizeof(float), NULL);
+            }
+            return false;
+
+        }
+
 };
 
 MemoryScanner scanner;
@@ -212,7 +274,7 @@ int main() {
 
     // 1. Setup GLFW
     if (!glfwInit()) return 1;
-    GLFWwindow* window = glfwCreateWindow(500, 500, "MemChanger", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(500, 500, "XitEngine", NULL, NULL);
     if (!window) return 1;
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1); 
@@ -231,10 +293,14 @@ int main() {
     static double valueToFindDouble = 0;
     static int selectedType = 0;
     const char* types[] = { "int", "float", "double", "long" };
-    static bool isConnected = false;
+    static bool isConnectedToProcess = false;
     static bool errorWhileConnecting = false;
     static int writeValue = 0;
     static char procFilter[128] = ""; // Filtro de busca
+
+    static bool speedHackActivated = false;
+    static float speedFactor = 2.0f;
+    static bool dllInjected = false;
 
     //// Loop Principal
     while (!glfwWindowShouldClose(window)) {
@@ -266,25 +332,20 @@ int main() {
                 std::string filterStr(procFilter);
                 // Converter filtro para minúsculo para busca case-insensitive
                 std::transform(filterStr.begin(), filterStr.end(), filterStr.begin(), ::tolower);
-
                 for (int n = 0; n < processList.size(); n++) {
                     // Preparar o nome do processo para exibição e busca
                     std::wstring ws = processList[n].name;
                     std::string sName(ws.begin(), ws.end());
-                    
                     // Lógica de Filtro
                     if (!filterStr.empty()) {
                         std::string sNameLower = sName;
                         std::transform(sNameLower.begin(), sNameLower.end(), sNameLower.begin(), ::tolower);
-                        
                         // Se o filtro não estiver no nome, pula este processo
                         if (sNameLower.find(filterStr) == std::string::npos) {
                             continue;
                         }
                     }
-
                     std::string label = std::to_string(processList[n].pid) + " - " + sName;
-
                     if (ImGui::Selectable(label.c_str(), selectedProcessIndex == n)) {
                         selectedProcessIndex = n;
                     }
@@ -296,8 +357,7 @@ int main() {
 
             // Botões de ação
             if (ImGui::Button("Abrir", ImVec2(120, 0)) && selectedProcessIndex != -1) {
-                isConnected = scanner.Connect(processList[selectedProcessIndex].name);
-                
+                isConnectedToProcess = scanner.Connect(processList[selectedProcessIndex].name);
                 // Sincroniza o campo de texto principal
                 std::wstring ws = processList[selectedProcessIndex].name;
                 std::string sName(ws.begin(), ws.end());
@@ -322,8 +382,8 @@ int main() {
         if (ImGui::Button("Conectar", ImVec2(-1, 0))) {
                 std::string s(procName);
                 std::wstring ws(s.begin(), s.end());
-                isConnected = scanner.Connect(ws);
-                if (isConnected) {
+                isConnectedToProcess = scanner.Connect(ws);
+                if (isConnectedToProcess) {
                     std::cout << "[LOG] Conectado com sucesso ao PID: " << scanner.targetPID << std::endl;
                 } else {
                     errorWhileConnecting = true;
@@ -332,7 +392,7 @@ int main() {
         }
 
         // Exibição do Status de Conexão
-            if (isConnected) {
+            if (isConnectedToProcess) {
                 ImGui::TextColored(ImVec4(0, 1, 0, 1), "Status: CONECTADO (PID: %lu)", scanner.targetPID);
             } else if (errorWhileConnecting) {
                 ImGui::TextColored(ImVec4(1, 0, 0, 1), "Status: FALHA AO CONECTAR, Verifique se o processo esta aberto e voce e Admin.");
@@ -342,7 +402,7 @@ int main() {
 
         ImGui::Separator();
 
-        if (!isConnected) ImGui::BeginDisabled();
+        if (!isConnectedToProcess) ImGui::BeginDisabled();
 
         ImGui::Text("--- Scanner ---");
 
@@ -387,7 +447,45 @@ int main() {
             }
         }
 
-        if (!isConnected) ImGui::EndDisabled();
+        ImGui::Separator();
+
+        ImGui::Text("--- Speed Hack (DLL INJECTION) ---");
+        
+        if (ImGui::Button("Ativar SpeedHack")) {
+            speedHackActivated = true;
+        }
+
+        if (speedHackActivated) {
+            if (!dllInjected) {
+                wchar_t currentPath[MAX_PATH];
+                GetModuleFileNameW(NULL, currentPath, MAX_PATH);
+                std::wstring fullPath(currentPath);
+                size_t lastSlash = fullPath.find_last_of(L"\\/");
+                std::wstring dllPath = fullPath.substr(0, lastSlash + 1) + L"speedhack.dll";
+                std::string finalPath(dllPath.begin(), dllPath.end());
+                if (InjectDLL(scanner.targetPID, finalPath.c_str())) {
+                    dllInjected = true;
+                }
+            } else {
+                if (ImGui::SliderFloat("Fator de Velocidade", &speedFactor, 0.1f, 10.0f, "%.1fx")) {
+                    if (!scanner.UpdateRemoteSpeed(scanner.targetPID, speedFactor)) {
+                        // Se falhar (ex: jogo fechou), reseta o status
+                        dllInjected = false;
+                    }
+                }
+                if (ImGui::Button("Resetar")) {
+                    speedFactor = 1.0f;
+                    scanner.UpdateRemoteSpeed(scanner.targetPID, speedFactor);
+                }
+                ImGui::TextColored(ImVec4(0, 1, 0, 1), "DLL Ativa! Ajuste o slider para mudar o tempo.");
+            }
+    
+            ImGui::SameLine();
+            if (ImGui::Button("Resetar")) { speedFactor = 1.0f; }
+        }
+
+
+        if (!isConnectedToProcess) ImGui::EndDisabled();
 
         ImGui::End();
 

@@ -16,7 +16,7 @@ cmake --build out/build/gcc-debug
 if %ERRORLEVEL% EQU 0 (
     echo.
     echo [SUCESSO] Rodando...
-    .\out\build\gcc-debug\RobloxEng.exe
+    .\out\build\gcc-debug\XitEngine.exe
 ) else (
     echo.
     echo [ERRO] A compilação falhou.
