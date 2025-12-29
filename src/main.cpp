@@ -4,109 +4,26 @@
 #include <string>
 #include <algorithm>
 
-//// ImGui Includes
+// ImGui Includes
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
 #include <GLFW/glfw3.h>
-#include <tlhelp32.h>
-#include <shellapi.h>
 
-bool IsRunAsAdmin() {
-    BOOL fRet = FALSE;
-    HANDLE hToken = NULL;
-    if (OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &hToken)) {
-        TOKEN_ELEVATION elevation;
-        DWORD dwSize;
-        if (GetTokenInformation(hToken, TokenElevation, &elevation, sizeof(elevation), &dwSize)) {
-            fRet = elevation.TokenIsElevated;
-        }
-    }
-    if (hToken) CloseHandle(hToken);
-    return fRet;
-}
-
-void RequestAdminPrivileges() {
-    if (!IsRunAsAdmin()) {
-        wchar_t szPath[MAX_PATH];
-        GetModuleFileNameW(NULL, szPath, MAX_PATH);
-
-        SHELLEXECUTEINFOW sei = { sizeof(sei) };
-        sei.lpVerb = L"runas";
-        sei.lpFile = szPath;
-        sei.hwnd = NULL;
-        sei.nShow = SW_NORMAL;
-
-        if (ShellExecuteExW(&sei)) {
-            exit(0); // Fecha a instância atual sem privilégios
-        }
-    }
-}
-
-struct ProcessInfo {
-    DWORD pid;
-    std::wstring name;
-};
-
-std::vector<ProcessInfo> GetActiveProcesses() {
-    std::vector<ProcessInfo> processes;
-    HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    if (hSnapshot == INVALID_HANDLE_VALUE) return processes;
-
-    PROCESSENTRY32W pe32;
-    pe32.dwSize = sizeof(PROCESSENTRY32W);
-
-    if (Process32FirstW(hSnapshot, &pe32)) {
-        do {
-            processes.push_back({ pe32.th32ProcessID, pe32.szExeFile });
-        } while (Process32NextW(hSnapshot, &pe32));
-    }
-    CloseHandle(hSnapshot);
-    return processes;
-}
+//xit engine
+#include "utils.hpp"
+#include "enums.hpp"
 
 static bool showProcessSelector = false;
-static std::vector<ProcessInfo> processList;
+static std::vector<Utils::ProcessInfo> processList;
 static int selectedProcessIndex = -1;
 
-enum MemoryType {
-    MEM_INT,
-    MEM_FLOAT,
-    MEM_DOUBLE,
-    MEM_LONG,
-    MEM_BYTE,
-    MEM_TWO_BYTES,
-    MEM_FOUR_BYTES,
-    MEM_EIGHT_BYTES
-};
-
-bool InjectDLL(DWORD processId, const char* dllPath) {
-    HANDLE hProc = OpenProcess(PROCESS_ALL_ACCESS, FALSE, processId);
-    if (!hProc) return false;
-
-    LPVOID pRemotePath = VirtualAllocEx(hProc, NULL, strlen(dllPath) + 1, MEM_COMMIT, PAGE_READWRITE);
-    WriteProcessMemory(hProc, pRemotePath, dllPath, strlen(dllPath) + 1, NULL);
-
-    HANDLE hThread = CreateRemoteThread(hProc, NULL, 0, 
-        (LPTHREAD_START_ROUTINE)GetProcAddress(GetModuleHandleA("kernel32.dll"), "LoadLibraryA"), 
-        pRemotePath, 0, NULL);
-
-    if (hThread) {
-        WaitForSingleObject(hThread, INFINITE);
-        CloseHandle(hThread);
-    }
-
-    VirtualFreeEx(hProc, pRemotePath, 0, MEM_RELEASE);
-    CloseHandle(hProc);
-    return true;
-}
-
-// Lógica de Memória (Simplificada para o exemplo)
 class MemoryScanner {
     public:
         HANDLE hProcess = NULL;
         std::vector<LPVOID> foundAddresses;
         DWORD targetPID = 0;
+        uintptr_t speedMultiplierOffset = 0;
 
         // Conecta ao processo alvo buscando pelo nome
         bool Connect(const std::wstring& procName) {
@@ -115,6 +32,7 @@ class MemoryScanner {
                 hProcess = NULL;
             }
             foundAddresses.clear();
+            speedMultiplierOffset = 0;
 
             PROCESSENTRY32W pe32;
             pe32.dwSize = sizeof(PROCESSENTRY32W);
@@ -216,6 +134,25 @@ class MemoryScanner {
             foundAddresses = newResults;
         }
 
+        uintptr_t GetModuleBaseAddress(DWORD procId, const wchar_t* modName) {
+            uintptr_t modBaseAddr = 0;
+            HANDLE hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, procId);
+            if (hSnap != INVALID_HANDLE_VALUE) {
+                MODULEENTRY32W me32;
+                me32.dwSize = sizeof(MODULEENTRY32W);
+                if (Module32FirstW(hSnap, &me32)) {
+                    do {
+                        if (_wcsicmp(me32.szModule, modName) == 0) {
+                            modBaseAddr = (uintptr_t)me32.modBaseAddr;
+                            break;
+                        }
+                    } while (Module32NextW(hSnap, &me32));
+                }
+                CloseHandle(hSnap);
+            }
+            return modBaseAddr;
+        }
+
         bool CompareFloat(float val1, float val2, float epsilon = 0.01f) {
             return std::abs(val1 - val2) < epsilon;
         }
@@ -225,44 +162,33 @@ class MemoryScanner {
         }
 
         bool UpdateRemoteSpeed(DWORD processId, float newSpeed) {
-            // 1. Achar a base da DLL no processo alvo
-            MODULEENTRY32W me32;
-            me32.dwSize = sizeof(MODULEENTRY32W);
-            HANDLE hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, processId);
-            
-            uintptr_t dllBase = 0;
-            if (Module32FirstW(hSnap, &me32)) {
-                do {
-                    if (std::wstring(me32.szModule) == L"speedhack.dll") {
-                        dllBase = (uintptr_t)me32.modBaseAddr;
-                        break;
+
+            uintptr_t dllBase = GetModuleBaseAddress(processId, L"speedhack.dll");
+            if (dllBase == 0) {
+                std::cout << "Erro: DLL nao encontrada no jogo!\n";
+                return false;
+            }
+
+            if (speedMultiplierOffset == 0) {
+                HMODULE hLocalDll = LoadLibraryA("speedhack.dll");
+                if (hLocalDll) {
+                    FARPROC remoteVarAddr = GetProcAddress(hLocalDll, "speedFactor");
+                    if (remoteVarAddr) {
+                        speedMultiplierOffset = (uintptr_t)remoteVarAddr - (uintptr_t)hLocalDll;
                     }
-                } while (Module32NextW(hSnap, &me32));
-            }
-            CloseHandle(hSnap);
-
-            if (dllBase == 0) return false;
-
-            HMODULE hLocalDll = LoadLibraryA("speedhack.dll");
-            if (!hLocalDll) return false; // Evita crash se a DLL não for encontrada localmente
-
-            FARPROC remoteVarAddr = GetProcAddress(hLocalDll, "speedFactor");
-            if (!remoteVarAddr) {
-                FreeLibrary(hLocalDll);
-                return false; // Evita crash se a variável não for exportada
+                    FreeLibrary(hLocalDll);
+                }
             }
 
-            uintptr_t offset = (uintptr_t)remoteVarAddr - (uintptr_t)hLocalDll;
-            FreeLibrary(hLocalDll);
+            if (speedMultiplierOffset == 0) return false;
 
-            uintptr_t finalAddr = dllBase + offset;
+            uintptr_t finalAddr = dllBase + speedMultiplierOffset;
+            std::cout << "Escrevendo em: " << std::hex << finalAddr << "\n";
 
-            // Verifique se hProcess é válido antes de escrever
             if (hProcess) {
                 return WriteProcessMemory(hProcess, (LPVOID)finalAddr, &newSpeed, sizeof(float), NULL);
             }
             return false;
-
         }
 
 };
@@ -270,7 +196,7 @@ class MemoryScanner {
 MemoryScanner scanner;
 
 int main() {
-    RequestAdminPrivileges();
+    Utils::RequestAdminPrivileges();
 
     // 1. Setup GLFW
     if (!glfwInit()) return 1;
@@ -299,7 +225,7 @@ int main() {
     static char procFilter[128] = ""; // Filtro de busca
 
     static bool speedHackActivated = false;
-    static float speedFactor = 2.0f;
+    static float speedFactor = 5.0f;
     static bool dllInjected = false;
 
     //// Loop Principal
@@ -316,7 +242,7 @@ int main() {
 
         //Seletor de janelas
         if (ImGui::Button("Abrir Lista de Processos", ImVec2(-1, 0))) {
-            processList = GetActiveProcesses();
+            processList = Utils::GetActiveProcesses();
             showProcessSelector = true;
             ImGui::OpenPopup("ProcessListPopup");
         }
@@ -463,7 +389,8 @@ int main() {
                 size_t lastSlash = fullPath.find_last_of(L"\\/");
                 std::wstring dllPath = fullPath.substr(0, lastSlash + 1) + L"speedhack.dll";
                 std::string finalPath(dllPath.begin(), dllPath.end());
-                if (InjectDLL(scanner.targetPID, finalPath.c_str())) {
+                std::cout << "speed hack dll is: " << finalPath << "\n";
+                if (Utils::InjectDLL(scanner.targetPID, finalPath.c_str())) {
                     dllInjected = true;
                 }
             } else {
@@ -479,9 +406,6 @@ int main() {
                 }
                 ImGui::TextColored(ImVec4(0, 1, 0, 1), "DLL Ativa! Ajuste o slider para mudar o tempo.");
             }
-    
-            ImGui::SameLine();
-            if (ImGui::Button("Resetar")) { speedFactor = 1.0f; }
         }
 
 
