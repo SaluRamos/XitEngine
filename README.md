@@ -1,4 +1,10 @@
-# Dependencias
+## Preview
+
+Solução alternativa lightweight do Cheat Engine, em breve disponibilizarei uma build beta.
+
+![alt text](readme/preview.png)
+
+## Dependencias
 
 ao modificar as dependencias, rode:
 
@@ -6,11 +12,19 @@ ao modificar as dependencias, rode:
 
 ao modificar o CMakeLists.txt, exclua a pasta "out".
 
-# TO DO
+## TO DO
 
-- o programa atual só está funcionando para procurar variaveis com exact value, incremente o dropdown menu com a opção de: exact value, bigger then, smaller then, value between, inscreasced value, decresced value, changed value, uncanged value.
-Também precisamos usar um EPSILON quando for buscar por variaveis com casas decimais (float e double), pois oque esta sendo exibido na tela pode ser uma aproximação.
+- o programa atual só está funcionando para procurar variaveis com exact value, incremente os filtros.
+Também precisamos usar um EPSILON quando for buscar por variaveis com casas decimais (float e double), pois oque esta sendo exibido na tela pode ser uma aproximação. (se bem que essa comparação deve ser cara computacionalmente)
 
-- Também adicione essas opções de tipo de variavel: 1 byte, 2 bytes, 4 bytes, 8 bytes, All
+- adicionar uma barra de progresso do scanner
 
-- speed hack funcional
+- adicionar lista de savedAdresses na interface
+
+- adicionar janela de modificação de endereço com opções para alterar valor, description, deletar, manter valor locked
+
+- Também adicione essas opções de tipo de variavel: 2 bytes, 4 bytes, 8 bytes, All
+
+- tornar speed hack funcional
+
+- função unrandomizer
