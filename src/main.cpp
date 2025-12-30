@@ -186,6 +186,7 @@ void DrawMemScannerSection() {
     ImGui::BeginChild("AddressesList", ImVec2(0, clipperHeight), true, ImGuiWindowFlags_AlwaysVerticalScrollbar);
     ImGuiListClipper clipper;
     clipper.Begin(scanner.foundAddresses.size());
+    static int64_t lastClickTimestamp = 0;
     while (clipper.Step()) {
         for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; i++) {
             const MemoryScanner::AddressInfo& a = scanner.foundAddresses[i];
@@ -198,6 +199,11 @@ void DrawMemScannerSection() {
                     "0x%p | cur:%s | prev:%s | first:%s",
                     (void*)a.address, cur, prev, first);
             if (ImGui::Selectable(line, selectedAddresIndex == i)) {
+                if (selectedAddresIndex == i && Utils::getActualTimestampMiliSeconds() - lastClickTimestamp < 200) {
+                    std::cout << "double click index " << i << "\n";
+                    selectedAddresIndex = -1;
+                }
+                lastClickTimestamp = Utils::getActualTimestampMiliSeconds();
                 selectedAddresIndex = i;
             }
         }
