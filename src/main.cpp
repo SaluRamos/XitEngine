@@ -33,8 +33,8 @@ static bool isFirstScan = true;
 const char* const* firstScanFilterTypes = GetScanFilterTypeNameListInFirstScan();
 const char* const* nextScanFilterTypes = GetScanFilterTypeNameListInNextScan();
 
-static int selectedScanMemType = 0;
-static int selectedScanFilter = 0;
+static int selectedScanMemType = 0; // 0 = int
+static int selectedScanFilter = 0; // 0 = exact value
 
 static int32_t valueToFindInt = 0;
 static float valueToFindFloat = 0.0f;
@@ -43,8 +43,8 @@ static int64_t valueToFindLong = 0;
 static uint8_t valueToFindByte = 0;
 
 static int32_t valueToReplaceInt = 0;
-static float valueToReplaceFloat = 0;
-static double valueToReplaceDouble = 0;
+static float valueToReplaceFloat = 0.0f;
+static double valueToReplaceDouble = 0.0;
 static int64_t valueToReplaceLong = 0;
 static uint8_t valueToReplaceByte = 0;
 
@@ -106,6 +106,7 @@ void DrawProcessSelectorSection() {
     }
     // process manual input
     ImGui::Text("Nome do Processo:");
+    ImGui::SameLine();
     ImGui::InputText("##proc", procName, IM_ARRAYSIZE(procName));
     if (ImGui::Button("Conectar", ImVec2(-1, 0))) {
             std::string s(procName);
@@ -137,12 +138,11 @@ void DrawMemScannerSection() {
     } else {
         ImGui::Combo("Filtro", &selectedScanFilter, nextScanFilterTypes, SCAN_FILTER_COUNT);
     }
-
     ImGui::Checkbox("Only Writable Memory", &onlyWritable);
-
+    ImGui::Text("Valor:");
+    ImGui::SameLine();
     MemoryType selectedMemType = ToMemoryType(selectedScanMemType);
     void* currentValPtr = nullptr;
-
     if (selectedMemType == MEM_INT) {
         ImGui::InputScalar("##val", ImGuiDataType_S32, &valueToFindInt);
         currentValPtr = &valueToFindInt;
@@ -206,7 +206,8 @@ void DrawMemScannerSection() {
 
     // Write to mem
     if (!scanner.foundAddresses.empty()) {
-        ImGui::Text("Novo Valor");
+        ImGui::Text("Novo Valor:");
+        ImGui::SameLine();
         if (selectedMemType == MEM_INT) {
             ImGui::InputScalar("##newValue", ImGuiDataType_S32, &valueToReplaceInt);
             if (ImGui::Button("Escrever em TODOS", ImVec2(-1, 0))) {
