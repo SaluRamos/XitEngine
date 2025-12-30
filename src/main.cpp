@@ -190,14 +190,15 @@ void DrawMemScannerSection() {
     while (clipper.Step()) {
         for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; i++) {
             const MemoryScanner::AddressInfo& a = scanner.foundAddresses[i];
+            scanner.foundAddresses[i].updateCurrentValue();
             char cur[32], prev[32], first[32];
-            a.formatValue(cur,   sizeof(cur),   a.current);
-            a.formatValue(prev,  sizeof(prev),  a.previous);
-            a.formatValue(first, sizeof(first), a.first);
+            a.formatValue(cur,   sizeof(cur),   a.GetCurrent());
+            a.formatValue(prev,  sizeof(prev),  a.GetPrevious());
+            a.formatValue(first, sizeof(first), a.GetFirst());
             char line[160];
             snprintf(line, sizeof(line),
                     "0x%p | cur:%s | prev:%s | first:%s",
-                    (void*)a.address, cur, prev, first);
+                    (void*)a.GetAddress(), cur, prev, first);
             if (ImGui::Selectable(line, selectedAddresIndex == i)) {
                 if (selectedAddresIndex == i && Utils::getActualTimestampMiliSeconds() - lastClickTimestamp < 200) {
                     std::cout << "double click index " << i << "\n";
@@ -218,7 +219,7 @@ void DrawMemScannerSection() {
             ImGui::InputScalar("##newValue", ImGuiDataType_S32, &valueToReplaceInt);
             if (ImGui::Button("Escrever em TODOS", ImVec2(-1, 0))) {
                 for (MemoryScanner::AddressInfo addr : scanner.foundAddresses) {
-                    scanner.WriteIntMemory(addr.getLPAddress(), valueToReplaceInt);
+                    scanner.WriteIntMemory(addr.GetLPAddress(), valueToReplaceInt);
                 }
             }
         }
@@ -226,7 +227,7 @@ void DrawMemScannerSection() {
             ImGui::InputScalar("##newValue", ImGuiDataType_Float, &valueToReplaceFloat);
             if (ImGui::Button("Escrever em TODOS", ImVec2(-1, 0))) {
                 for (MemoryScanner::AddressInfo addr : scanner.foundAddresses) {
-                    scanner.WriteFloatMemory(addr.getLPAddress(), valueToReplaceFloat);
+                    scanner.WriteFloatMemory(addr.GetLPAddress(), valueToReplaceFloat);
                 }
             }
         }
@@ -234,7 +235,7 @@ void DrawMemScannerSection() {
             ImGui::InputScalar("##newValue", ImGuiDataType_Double, &valueToReplaceDouble);
             if (ImGui::Button("Escrever em TODOS", ImVec2(-1, 0))) {
                 for (MemoryScanner::AddressInfo addr : scanner.foundAddresses) {
-                    scanner.WriteDoubleMemory(addr.getLPAddress(), valueToReplaceDouble);
+                    scanner.WriteDoubleMemory(addr.GetLPAddress(), valueToReplaceDouble);
                 }
             }
         }
@@ -242,7 +243,7 @@ void DrawMemScannerSection() {
             ImGui::InputScalar("##newValue", ImGuiDataType_S64, &valueToReplaceLong);
             if (ImGui::Button("Escrever em TODOS", ImVec2(-1, 0))) {
                 for (MemoryScanner::AddressInfo addr : scanner.foundAddresses) {
-                    scanner.WriteLongMemory(addr.getLPAddress(), valueToReplaceLong);
+                    scanner.WriteLongMemory(addr.GetLPAddress(), valueToReplaceLong);
                 }
             }
         }
@@ -250,7 +251,7 @@ void DrawMemScannerSection() {
             ImGui::InputScalar("##newValue", ImGuiDataType_U8, &valueToReplaceByte);
             if (ImGui::Button("Escrever em TODOS", ImVec2(-1, 0))) {
                 for (MemoryScanner::AddressInfo addr : scanner.foundAddresses) {
-                    scanner.WriteByteMemory(addr.getLPAddress(), valueToReplaceByte);
+                    scanner.WriteByteMemory(addr.GetLPAddress(), valueToReplaceByte);
                 }
             }
         }

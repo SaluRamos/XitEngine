@@ -1,11 +1,14 @@
 #include "mem_scanner.hpp"
 
+HANDLE MemoryScanner::hProcess = NULL;
+
 bool MemoryScanner::ConnectToProcess(const std::wstring& procName) {
     if (hProcess) {
         CloseHandle(hProcess);
         hProcess = NULL;
     }
     ResetScan();
+    ResetSavedAddresses();
     ResetSpeedHack();
     PROCESSENTRY32W pe32;
     pe32.dwSize = sizeof(PROCESSENTRY32W);
@@ -52,6 +55,10 @@ BOOL MemoryScanner::WriteByteMemory(LPVOID address, uint8_t value) {
     if (!hProcess) return false;
     SIZE_T written = 0;
     return WriteProcessMemory(hProcess, address, &value, sizeof(value), &written) && written == sizeof(value);
+}
+
+void MemoryScanner::ResetSavedAddresses() {
+    savedAddresses.clear();
 }
 
 void MemoryScanner::ResetScan() {
@@ -133,11 +140,12 @@ void MemoryScanner::NextScan(void* value, MemoryType memType, ScanFilterType sca
     for (MemoryScanner::AddressInfo addr : foundAddresses) {
         std::vector<unsigned char> tempBuffer(size);
         SIZE_T bytesRead;
-        if (ReadProcessMemory(hProcess, addr.getLPAddress(), tempBuffer.data(), size, &bytesRead)) {
+        if (ReadProcessMemory(hProcess, addr.GetLPAddress(), tempBuffer.data(), size, &bytesRead)) {
             if (memcmp(tempBuffer.data(), value, size) == 0) {
                 newResults.push_back(addr);
             }
         }
+        addr.SetCurrentAsPrevious();
     }
     foundAddresses = newResults;
 }

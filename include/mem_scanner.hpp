@@ -16,6 +16,21 @@ class MemoryScanner {
 
         class AddressInfo {
 
+            private:
+
+                uintptr_t address;
+                uint64_t current; //raw
+                uint64_t previous; //raw
+                uint64_t first; //raw
+                MemoryType type;
+
+                template<typename T>
+                static T readRaw(uint64_t raw) {
+                    T out{};
+                    std::memcpy(&out, &raw, sizeof(T));
+                    return out;
+                }
+
             public:
 
                 AddressInfo(uintptr_t addr, uint64_t cur, uint64_t prev, uint64_t first, MemoryType type) :
@@ -26,24 +41,38 @@ class MemoryScanner {
                     type(type)
                 {}
 
-                uintptr_t address;
-                uint64_t current; //raw
-                uint64_t previous; //raw
-                uint64_t first; //raw
-                MemoryType type;
-                //std::memcpy(&raw, &f, sizeof(float)); //para escrita
-                // float out;
-                // std::memcpy(&out, &raw, sizeof(float)); //para leitura
+                uintptr_t GetAddress() const {
+                    return address;
+                }
 
-                LPVOID getLPAddress() const {
+                LPVOID GetLPAddress() const {
                     return reinterpret_cast<LPVOID>(address);
                 }
 
-                template<typename T>
-                static T readRaw(uint64_t raw) {
-                    T out{};
-                    std::memcpy(&out, &raw, sizeof(T));
-                    return out;
+                uint64_t GetCurrent() const {
+                    return current;
+                }
+
+                uint64_t GetPrevious() const {
+                    return previous;
+                }
+
+                uint64_t GetFirst() const {
+                    return first;
+                }
+
+                void updateCurrentValue() {
+                    ReadProcessMemory(
+                        MemoryScanner::hProcess,
+                        (LPCVOID) address,
+                        &current,
+                        sizeOfMemType(type),
+                        nullptr
+                    );
+                }
+
+                void SetCurrentAsPrevious() {
+                    previous = current;
                 }
 
                 void formatValue(char* buf, size_t sz, uint64_t raw) const {
@@ -81,7 +110,7 @@ class MemoryScanner {
         };
 
         // process
-        HANDLE hProcess = NULL;
+        static HANDLE hProcess;
         DWORD targetPID = 0;
         bool ConnectToProcess(const std::wstring& procName);
         
@@ -93,6 +122,7 @@ class MemoryScanner {
         BOOL WriteDoubleMemory(LPVOID address, double value);
         BOOL WriteLongMemory(LPVOID address, int64_t value);
         BOOL WriteByteMemory(LPVOID address, uint8_t value);
+        void ResetSavedAddresses();
         void ResetScan();
         void FirstScan(void* value, bool onlyWritable, MemoryType memType, ScanFilterType scanType);
         void NextScan(void* value, MemoryType memType, ScanFilterType scanType);
