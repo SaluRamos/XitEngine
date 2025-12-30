@@ -24,6 +24,7 @@ static char procFilter[128] = ""; // search filter
 static bool isConnectedToProcess = false;
 static bool errorWhileConnecting = false;
 
+// Scanner
 static MemoryScanner scanner;
 static bool onlyWritable = true;
 const char* const* memTypes = GetMemoryTypeNameList();
@@ -47,6 +48,9 @@ static double valueToReplaceDouble = 0;
 static int64_t valueToReplaceLong = 0;
 static uint8_t valueToReplaceByte = 0;
 
+static int selectedAddresIndex = -1;
+
+// SpeedHack
 static bool speedHackActivated = false;
 static float speedFactor = 5.0f;
 static bool speedDLLInjected = false;
@@ -138,37 +142,31 @@ void DrawMemScannerSection() {
 
     MemoryType selectedMemType = ToMemoryType(selectedScanMemType);
     void* currentValPtr = nullptr;
-    size_t currentSize = 0;
 
     if (selectedMemType == MEM_INT) {
         ImGui::InputScalar("##val", ImGuiDataType_S32, &valueToFindInt);
         currentValPtr = &valueToFindInt;
-        currentSize = sizeof(int32_t);
     }
     else if (selectedMemType == MEM_FLOAT) {
         ImGui::InputScalar("##val", ImGuiDataType_Float, &valueToFindFloat);
         currentValPtr = &valueToFindFloat;
-        currentSize = sizeof(float);
     }
     else if (selectedMemType == MEM_DOUBLE) {
         ImGui::InputScalar("##val", ImGuiDataType_Double, &valueToFindDouble);
         currentValPtr = &valueToFindDouble;
-        currentSize = sizeof(double);
     }
     else if (selectedMemType == MEM_LONG) {
         ImGui::InputScalar("##val", ImGuiDataType_S64, &valueToFindLong);
         currentValPtr = &valueToFindLong;
-        currentSize = sizeof(int64_t);
     }
     else if (selectedMemType == MEM_BYTE) {
         ImGui::InputScalar("##val", ImGuiDataType_U8, &valueToFindByte);
         currentValPtr = &valueToFindByte;
-        currentSize = sizeof(uint8_t);
     }
 
     if (isFirstScan) {
         if (ImGui::Button("First Scan", ImVec2(ImGui::GetContentRegionAvail().x * 0.5f, 0))) {
-            scanner.FirstScan(currentValPtr, currentSize, onlyWritable, ToScanFilterType(selectedScanFilter));
+            scanner.FirstScan(currentValPtr, onlyWritable, selectedMemType, ToScanFilterType(selectedScanFilter));
             isFirstScan = false;
         }
     } else {
@@ -178,51 +176,74 @@ void DrawMemScannerSection() {
         }
         ImGui::SameLine();
         if (ImGui::Button("Next Scan", ImVec2(-1, 0))) {
-            scanner.NextScan(currentValPtr, currentSize, ToScanFilterType(selectedScanFilter));
+            scanner.NextScan(currentValPtr, selectedMemType, ToScanFilterType(selectedScanFilter));
         }
     }
-    
     ImGui::TextColored(ImVec4(1, 1, 0, 1), "Encontrados: %zu", scanner.foundAddresses.size());
+
+    const static float itemHeight = ImGui::GetTextLineHeightWithSpacing();
+    const static float clipperHeight = itemHeight * 10.0f;
+    ImGui::BeginChild("AddressesList", ImVec2(0, clipperHeight), true, ImGuiWindowFlags_AlwaysVerticalScrollbar);
+    ImGuiListClipper clipper;
+    clipper.Begin(scanner.foundAddresses.size());
+    while (clipper.Step()) {
+        for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; i++) {
+            const MemoryScanner::AddressInfo& a = scanner.foundAddresses[i];
+            char cur[32], prev[32], first[32];
+            a.formatValue(cur,   sizeof(cur),   a.current);
+            a.formatValue(prev,  sizeof(prev),  a.previous);
+            a.formatValue(first, sizeof(first), a.first);
+            char line[160];
+            snprintf(line, sizeof(line),
+                    "0x%p | cur:%s | prev:%s | first:%s",
+                    (void*)a.address, cur, prev, first);
+            if (ImGui::Selectable(line, selectedAddresIndex == i)) {
+                selectedAddresIndex = i;
+            }
+        }
+    }
+    ImGui::EndChild();
+
     // Write to mem
     if (!scanner.foundAddresses.empty()) {
         ImGui::Text("Novo Valor");
         if (selectedMemType == MEM_INT) {
             ImGui::InputScalar("##newValue", ImGuiDataType_S32, &valueToReplaceInt);
             if (ImGui::Button("Escrever em TODOS", ImVec2(-1, 0))) {
-                for (LPVOID addr : scanner.foundAddresses) {
-                    scanner.WriteIntMemory(addr, valueToReplaceInt);
+                for (MemoryScanner::AddressInfo addr : scanner.foundAddresses) {
+                    scanner.WriteIntMemory(addr.getLPAddress(), valueToReplaceInt);
                 }
             }
         }
         else if (selectedMemType == MEM_FLOAT) {
             ImGui::InputScalar("##newValue", ImGuiDataType_Float, &valueToReplaceFloat);
             if (ImGui::Button("Escrever em TODOS", ImVec2(-1, 0))) {
-                for (LPVOID addr : scanner.foundAddresses) {
-                    scanner.WriteFloatMemory(addr, valueToReplaceFloat);
+                for (MemoryScanner::AddressInfo addr : scanner.foundAddresses) {
+                    scanner.WriteFloatMemory(addr.getLPAddress(), valueToReplaceFloat);
                 }
             }
         }
         else if (selectedMemType == MEM_DOUBLE) {
             ImGui::InputScalar("##newValue", ImGuiDataType_Double, &valueToReplaceDouble);
             if (ImGui::Button("Escrever em TODOS", ImVec2(-1, 0))) {
-                for (LPVOID addr : scanner.foundAddresses) {
-                    scanner.WriteDoubleMemory(addr, valueToReplaceDouble);
+                for (MemoryScanner::AddressInfo addr : scanner.foundAddresses) {
+                    scanner.WriteDoubleMemory(addr.getLPAddress(), valueToReplaceDouble);
                 }
             }
         }
         else if (selectedMemType == MEM_LONG) {
             ImGui::InputScalar("##newValue", ImGuiDataType_S64, &valueToReplaceLong);
             if (ImGui::Button("Escrever em TODOS", ImVec2(-1, 0))) {
-                for (LPVOID addr : scanner.foundAddresses) {
-                    scanner.WriteLongMemory(addr, valueToReplaceLong);
+                for (MemoryScanner::AddressInfo addr : scanner.foundAddresses) {
+                    scanner.WriteLongMemory(addr.getLPAddress(), valueToReplaceLong);
                 }
             }
         }
         else if (selectedMemType == MEM_BYTE) {
             ImGui::InputScalar("##newValue", ImGuiDataType_U8, &valueToReplaceByte);
             if (ImGui::Button("Escrever em TODOS", ImVec2(-1, 0))) {
-                for (LPVOID addr : scanner.foundAddresses) {
-                    scanner.WriteByteMemory(addr, valueToReplaceByte);
+                for (MemoryScanner::AddressInfo addr : scanner.foundAddresses) {
+                    scanner.WriteByteMemory(addr.getLPAddress(), valueToReplaceByte);
                 }
             }
         }

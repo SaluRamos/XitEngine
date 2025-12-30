@@ -62,7 +62,8 @@ void MemoryScanner::ResetSpeedHack() {
     speedMultiplierOffset = 0;
 }
 
-void MemoryScanner::FirstScan(void* value, size_t size, bool onlyWritable, ScanFilterType scanType) {
+void MemoryScanner::FirstScan(void* value, bool onlyWritable, MemoryType memType, ScanFilterType scanType) {
+    size_t size = sizeOfMemType(memType);
     ResetScan();
     if (!hProcess) return;
     MEMORY_BASIC_INFORMATION mbi;
@@ -105,8 +106,16 @@ void MemoryScanner::FirstScan(void* value, size_t size, bool onlyWritable, ScanF
                     
                     for (size_t i = 0; i <= bytesRead - size; i++) {
                         if (memcmp(&buffer[i], value, size) == 0) {
-                            // Armazena o endereço real (Base + deslocamento do loop)
-                            foundAddresses.push_back((LPVOID)((uintptr_t)mbi.BaseAddress + i));
+                            uintptr_t addr = (uintptr_t)mbi.BaseAddress + i;
+                            uint64_t raw = 0;
+                            ReadProcessMemory(
+                                hProcess,
+                                (LPCVOID)addr,
+                                &raw,
+                                sizeOfMemType(memType),
+                                nullptr
+                            );
+                            foundAddresses.emplace_back(addr, raw, raw, raw, memType);
                         }
                     }
                 }
@@ -117,13 +126,14 @@ void MemoryScanner::FirstScan(void* value, size_t size, bool onlyWritable, ScanF
     }
 }
 
-void MemoryScanner::NextScan(void* value, size_t size, ScanFilterType scanType) {
+void MemoryScanner::NextScan(void* value, MemoryType memType, ScanFilterType scanType) {
+    size_t size = sizeOfMemType(memType);
     if (!hProcess || foundAddresses.empty()) return;
-    std::vector<LPVOID> newResults;
-    for (LPVOID addr : foundAddresses) {
+    std::vector<MemoryScanner::AddressInfo> newResults;
+    for (MemoryScanner::AddressInfo addr : foundAddresses) {
         std::vector<unsigned char> tempBuffer(size);
         SIZE_T bytesRead;
-        if (ReadProcessMemory(hProcess, addr, tempBuffer.data(), size, &bytesRead)) {
+        if (ReadProcessMemory(hProcess, addr.getLPAddress(), tempBuffer.data(), size, &bytesRead)) {
             if (memcmp(tempBuffer.data(), value, size) == 0) {
                 newResults.push_back(addr);
             }

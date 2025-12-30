@@ -16,6 +16,17 @@ enum MemoryType {
         MEM_COUNT
 };
 
+constexpr uint8_t sizeOfMemType(MemoryType t) {
+    switch (t) {
+        case MEM_INT:    return sizeof(int32_t);
+        case MEM_FLOAT:  return sizeof(float);
+        case MEM_DOUBLE: return sizeof(double);
+        case MEM_LONG:   return sizeof(int64_t);
+        case MEM_BYTE:   return sizeof(uint8_t);
+        default:         return 0;
+    }
+}
+
 static const char* const* GetMemoryTypeNameList() {
     static const char* names[] = {
         #define X(id, str) str,
