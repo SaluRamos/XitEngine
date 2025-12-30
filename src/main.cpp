@@ -296,7 +296,7 @@ int main() {
 
     // Setup GLFW
     if (!glfwInit()) return 1;
-    GLFWwindow* window = glfwCreateWindow(600, 500, "XitEngine", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(600, 550, "XitEngine", NULL, NULL);
     if (!window) return 1;
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1); 
